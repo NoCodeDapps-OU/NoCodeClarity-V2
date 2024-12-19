@@ -1,8 +1,11 @@
 import { Box, Button, Container, Grid, Heading, Stack, Text, VStack } from '@chakra-ui/react';
 import { FiCode, FiDatabase, FiCpu } from 'react-icons/fi';
 import { FaBitcoin } from 'react-icons/fa';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import AuthModal from '@/components/AuthModal';
+import ResetPasswordModal from '@/components/ResetPasswordModal';
+import { useRouter } from 'next/navigation';
 
 interface FeatureCardProps {
   icon: React.ReactElement;
@@ -33,6 +36,22 @@ const FeatureCard = ({ icon, title, description }: FeatureCardProps) => (
 
 export default function Home() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (searchParams?.get('reset') === 'true') {
+      setIsResetOpen(true);
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [searchParams]);
+
+  const handleResetComplete = () => {
+    setIsResetOpen(false);
+    setIsAuthOpen(true);
+  };
 
   return (
     <Container maxW="container.xl" pt={20} pb={20} flex="1">
@@ -109,6 +128,11 @@ export default function Home() {
       <AuthModal 
         isOpen={isAuthOpen} 
         onClose={() => setIsAuthOpen(false)}
+      />
+      
+      <ResetPasswordModal
+        isOpen={isResetOpen}
+        onClose={handleResetComplete}
       />
     </Container>
   );

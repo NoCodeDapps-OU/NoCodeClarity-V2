@@ -1,13 +1,15 @@
-import { Box, Button, Container, Flex, IconButton, Stack, Text, useDisclosure } from '@chakra-ui/react';
+import { Box, Button, Container, Flex, IconButton, Stack, Text, useDisclosure, HStack } from '@chakra-ui/react';
 import { HamburgerIcon, CloseIcon } from '@chakra-ui/icons';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FiCode, FiDatabase } from 'react-icons/fi';
 import { BiBitcoin } from 'react-icons/bi';
 import { AiOutlineRobot } from 'react-icons/ai';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthModal from './AuthModal';
 import UserMenu from './UserMenu';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/database.types';
 
 const NavItems = [
   { name: 'Frontend', icon: <FiCode />, href: '/frontend' },
@@ -16,33 +18,62 @@ const NavItems = [
   { name: 'AI Agents', icon: <AiOutlineRobot />, href: '/ai-agents' }
 ];
 
-const Navbar = () => {
+export default function Navbar() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [user, setUser] = useState<null | { email: string; avatar: string; name?: string }>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [username, setUsername] = useState<string>('');
+  const supabase = createClientComponentClient<Database>();
   const { isOpen, onToggle } = useDisclosure();
   const router = useRouter();
 
-  const handleSignOut = () => {
-    setUser(null);
-    router.push('/');
-  };
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setIsAuthenticated(!!user);
+        
+        if (user) {
+          // Fetch user profile
+          const { data: profile } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.username) {
+            setUsername(profile.username);
+          }
+        }
+      } catch (error) {
+        setIsAuthenticated(false);
+      }
+    };
+
+    // Check initial auth state
+    checkUser();
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false);
+        setUsername('');
+      } else if (event === 'SIGNED_IN') {
+        checkUser();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase.auth]);
 
   const handleNavigation = (href: string) => {
     router.push(href);
   };
 
-  // Mock sign in - will be called from AuthModal
-  const handleSignIn = () => {
-    setUser({
-      email: 'demo@example.com',
-      name: 'Demo User',
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=demo@example.com`,
-    });
-  };
-
   return (
     <Box 
-      bg="white"
+      bg="white" 
       position="relative"
       zIndex={10}
       boxShadow="sm"
@@ -75,9 +106,9 @@ const Navbar = () => {
                 </Button>
               ))}
             </Stack>
-            {user ? (
+            {isAuthenticated ? (
               <Box ml={8}>
-                <UserMenu user={user} onSignOut={handleSignOut} />
+                <UserMenu />
               </Box>
             ) : (
               <Button
@@ -105,6 +136,28 @@ const Navbar = () => {
         {isOpen && (
           <Box pb={4} display={{ md: 'none' }}>
             <Stack as="nav" spacing={4}>
+              {isAuthenticated ? (
+                <HStack px={4} py={2} justify="space-between" w="full">
+                  <HStack spacing={3}>
+                    <UserMenu />
+                    {username && (
+                      <Text color="gray.700" fontWeight="600">
+                        {username}
+                      </Text>
+                    )}
+                  </HStack>
+                </HStack>
+              ) : (
+                <Button
+                  w="full"
+                  bg="brand.orange"
+                  color="white"
+                  _hover={{ bg: '#ff824d' }}
+                  onClick={() => setIsAuthOpen(true)}
+                >
+                  Sign In
+                </Button>
+              )}
               {NavItems.map((item) => (
                 <Button
                   key={item.name}
@@ -120,19 +173,6 @@ const Navbar = () => {
                   {item.name}
                 </Button>
               ))}
-              {user ? (
-                <UserMenu user={user} onSignOut={handleSignOut} isMobile />
-              ) : (
-                <Button
-                  w="full"
-                  bg="brand.orange"
-                  color="white"
-                  _hover={{ bg: '#ff824d' }}
-                  onClick={() => setIsAuthOpen(true)}
-                >
-                  Sign In
-                </Button>
-              )}
             </Stack>
           </Box>
         )}
@@ -140,13 +180,8 @@ const Navbar = () => {
 
       <AuthModal 
         isOpen={isAuthOpen} 
-        onClose={() => {
-          setIsAuthOpen(false);
-          handleSignIn(); // Mock sign in when modal closes
-        }}
+        onClose={() => setIsAuthOpen(false)} 
       />
     </Box>
   );
-};
-
-export default Navbar;
+}

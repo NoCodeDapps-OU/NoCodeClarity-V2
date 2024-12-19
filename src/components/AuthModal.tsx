@@ -21,6 +21,8 @@ import {
 } from '@chakra-ui/react';
 import { useState } from 'react';
 import { useRouter } from 'next/router';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/database.types';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -33,11 +35,84 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
+  const [loading, setLoading] = useState(false);
   const toast = useToast();
   const router = useRouter();
+  const supabase = createClientComponentClient<Database>();
 
-  const handleSignIn = () => {
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSignIn = async (email: string, password: string) => {
     if (!email || !password) {
+      toast({
+        title: 'Error',
+        description: 'Please enter both email and password',
+        status: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+
+    setLoading(true);
+    const supabase = createClientComponentClient<Database>();
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        const errorMessage = error.message?.toLowerCase() || '';
+        
+        if (errorMessage.includes('invalid login credentials')) {
+          toast({
+            title: 'Invalid Credentials',
+            description: 'The email or password you entered is incorrect',
+            status: 'error',
+            duration: 3000,
+          });
+        } else if (errorMessage.includes('email not confirmed')) {
+          toast({
+            title: 'Email Not Confirmed',
+            description: 'Please check your email to confirm your account',
+            status: 'error',
+            duration: 3000,
+          });
+        } else {
+          toast({
+            title: 'Error',
+            description: error.message,
+            status: 'error',
+            duration: 3000,
+          });
+        }
+      } else if (data?.user) {
+        onClose();
+        toast({
+          title: 'Success',
+          description: 'Signed in successfully',
+          status: 'success',
+          duration: 3000,
+        });
+      }
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!email || !password || !confirmPassword || !name || !username) {
       toast({
         title: 'Error',
         description: 'Please fill in all fields',
@@ -47,21 +122,20 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       return;
     }
 
-    // Just close the modal and show success message
-    onClose();
-    toast({
-      title: 'Success',
-      description: 'Signed in successfully',
-      status: 'success',
-      duration: 3000,
-    });
-  };
-
-  const handleSignUp = () => {
-    if (!email || !password || !confirmPassword || !name || !username) {
+    if (!isValidEmail(email)) {
       toast({
-        title: 'Error',
-        description: 'Please fill in all fields',
+        title: 'Invalid Email',
+        description: 'Please enter a valid email address',
+        status: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({
+        title: 'Weak Password',
+        description: 'Password must be at least 6 characters long',
         status: 'error',
         duration: 3000,
       });
@@ -78,14 +152,107 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
       return;
     }
 
-    // Just close the modal and show success message
-    onClose();
-    toast({
-      title: 'Success',
-      description: 'Account created successfully',
-      status: 'success',
-      duration: 3000,
-    });
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            username,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) {
+        if (error.message.includes('already registered')) {
+          toast({
+            title: 'Account exists',
+            description: 'This email is already registered. Please sign in instead.',
+            status: 'error',
+            duration: 3000,
+          });
+          return;
+        }
+        throw error;
+      }
+
+      onClose();
+      toast({
+        title: 'Success',
+        description: 'Please check your email to confirm your account',
+        status: 'success',
+        duration: 5000,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message,
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (email: string) => {
+    if (!email) {
+      toast({
+        title: 'Error',
+        description: 'Please enter your email address',
+        status: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      toast({
+        title: 'Invalid Email',
+        description: 'Please enter a valid email address',
+        status: 'error',
+        duration: 3000,
+      });
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/?reset=true#`,
+      });
+
+      if (error) {
+        toast({
+          title: 'Error',
+          description: error.message,
+          status: 'error',
+          duration: 3000,
+        });
+      } else {
+        toast({
+          title: 'Success',
+          description: 'Password reset instructions sent to your email',
+          status: 'success',
+          duration: 5000,
+        });
+        onClose();
+      }
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred',
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -136,20 +303,22 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         _focus={{ borderColor: "brand.orange", boxShadow: "0 0 0 1px #FFA500" }}
                       />
                     </FormControl>
-                    <Link
-                      alignSelf="flex-start"
+                    <Button
+                      variant="link"
                       color="brand.orange"
-                      fontSize="sm"
-                      _hover={{ textDecoration: 'none', opacity: 0.8 }}
+                      size="sm"
+                      onClick={() => handleForgotPassword(email)}
+                      isLoading={loading}
                     >
                       Forgot Password?
-                    </Link>
+                    </Button>
                     <Button
                       w="full"
                       bg="brand.orange"
                       color="white"
                       _hover={{ bg: '#ff824d' }}
-                      onClick={handleSignIn}
+                      onClick={() => handleSignIn(email, password)}
+                      isLoading={loading}
                     >
                       Sign In
                     </Button>
@@ -232,6 +401,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                       color="white"
                       _hover={{ bg: '#ff824d' }}
                       onClick={handleSignUp}
+                      isLoading={loading}
                     >
                       Sign Up
                     </Button>

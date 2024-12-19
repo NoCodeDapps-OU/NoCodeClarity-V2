@@ -10,48 +10,76 @@ import {
   VStack,
   Divider,
 } from '@chakra-ui/react';
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useEffect, useState } from 'react';
+import type { Database } from '@/types/database.types';
 
-interface UserMenuProps {
-  user: {
-    email: string;
-    avatar: string;
-    name?: string;
-  };
-  onSignOut: () => void;
-  isMobile?: boolean;
-}
-
-export default function UserMenu({ user, onSignOut, isMobile }: UserMenuProps) {
-  const isWalletConnected = false;
+export default function UserMenu() {
   const router = useRouter();
+  const supabase = createClientComponentClient<Database>();
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [username, setUsername] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email) {
+          setUserEmail(user.email);
+          
+          // Fetch user profile from the users table
+          const { data: profile } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.username) {
+            setUsername(profile.username);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getUser();
+  }, [supabase.auth]);
+
+  const getInitial = (email: string) => {
+    return email ? email.charAt(0).toUpperCase() : 'U';
+  };
 
   const handleProfileClick = () => {
     router.push('/profile');
   };
 
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      router.push('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
+
+  if (loading) {
+    return <Avatar size="sm" name="Loading" bg="brand.orange" />;
+  }
+
   return (
     <Menu placement="bottom-end">
       <MenuButton>
-        <HStack 
-          spacing={3} 
-          bg={isMobile ? "whiteAlpha.100" : "transparent"}
-          p={isMobile ? 2 : 0}
-          borderRadius="md"
-          w={isMobile ? "full" : "auto"}
-        >
-          <Avatar
-            src={user.avatar}
-            size={isMobile ? "xs" : "sm"}
-            cursor="pointer"
-            _hover={{ opacity: 0.8 }}
-          />
-          {isMobile && (
-            <Text color="gray.700" fontSize="sm" fontWeight="600" flex={1}>
-              {user.name || user.email.split('@')[0]}
-            </Text>
-          )}
-        </HStack>
+        <Avatar 
+          size="sm" 
+          name={username || getInitial(userEmail)}
+          bg="brand.orange"
+        />
       </MenuButton>
       <MenuList 
         bg="#1A202C"
@@ -67,10 +95,10 @@ export default function UserMenu({ user, onSignOut, isMobile }: UserMenuProps) {
         <VStack align="stretch" p={4} spacing={4}>
           <Box>
             <Text color="white" fontWeight="700" fontSize="md">
-              NOCC
+              {username || 'Welcome'}
             </Text>
             <Text color="whiteAlpha.700" fontSize="sm">
-              nocc@nocc.com
+              {userEmail}
             </Text>
           </Box>
           
@@ -79,11 +107,11 @@ export default function UserMenu({ user, onSignOut, isMobile }: UserMenuProps) {
               w={2} 
               h={2} 
               borderRadius="full" 
-              bg={isWalletConnected ? "green.400" : "red.400"}
-              boxShadow={`0 0 10px ${isWalletConnected ? "#48BB78" : "#F56565"}`}
+              bg="red.400"
+              boxShadow="0 0 10px #F56565"
             />
             <Text color="whiteAlpha.700" fontSize="sm">
-              Wallet {isWalletConnected ? 'Connected' : 'Not Connected'}
+              Wallet Not Connected
             </Text>
           </HStack>
         </VStack>
@@ -111,7 +139,7 @@ export default function UserMenu({ user, onSignOut, isMobile }: UserMenuProps) {
             _focus={{ bg: 'whiteAlpha.100' }}
             _active={{ bg: 'whiteAlpha.200' }}
             color="red.400"
-            onClick={onSignOut}
+            onClick={handleSignOut}
             fontSize="sm"
             py={2}
             px={3}

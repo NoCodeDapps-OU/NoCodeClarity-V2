@@ -3,6 +3,12 @@ import { ChakraProvider, extendTheme } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Layout from '@/components/Layout';
+import SupabaseProvider from '@/providers/SupabaseProvider';
+import { createPagesBrowserClient } from '@supabase/auth-helpers-nextjs';
+import { SessionContextProvider } from '@supabase/auth-helpers-react';
+import { useState, useEffect } from 'react';
+import type { Database } from '@/types/database.types';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const theme = extendTheme({
   colors: {
@@ -80,17 +86,39 @@ function getPageTitle(pathname: string): string {
 function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter();
   const pageTitle = getPageTitle(router.pathname);
+  const [supabaseClient] = useState(() => createPagesBrowserClient<Database>());
+
+  useEffect(() => {
+    // Handle Supabase auth state changes
+    const {
+      data: { subscription },
+    } = supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.push('/');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router, supabaseClient]);
 
   return (
-    <ChakraProvider theme={theme}>
-      <Head>
-        <title>{pageTitle}</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-      <Layout>
-        <Component {...pageProps} />
-      </Layout>
-    </ChakraProvider>
+    <SessionContextProvider supabaseClient={supabaseClient} initialSession={pageProps.initialSession}>
+      <SupabaseProvider>
+        <ChakraProvider theme={theme}>
+          <ErrorBoundary>
+            <Head>
+              <title>{pageTitle}</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+            </Head>
+            <Layout>
+              <Component {...pageProps} />
+            </Layout>
+          </ErrorBoundary>
+        </ChakraProvider>
+      </SupabaseProvider>
+    </SessionContextProvider>
   );
 }
 
