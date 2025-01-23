@@ -20,5 +20,16 @@
   ],
   "[typescript]": {
     "editor.defaultFormatter": "denoland.vscode-deno"
-  }
+  },
+  "json.schemas": [
+    {
+      "fileMatch": ["package.json"],
+      "url": "./schemas/package-schema.json"
+    },
+    {
+      "fileMatch": ["tsconfig.json"],
+      "url": "./schemas/tsconfig-schema.json"
+    }
+  ],
+  "http.proxySupport": "off"
 }
